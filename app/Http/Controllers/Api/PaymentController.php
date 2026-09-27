@@ -42,8 +42,8 @@ class PaymentController extends Controller
                     'plan_key' => 'max',
                 ],
             ],
-            'success_url' => config('app.frontend_url') . '/?payment=success&session_id={CHECKOUT_SESSION_ID}',
-            'cancel_url' => config('app.frontend_url') . '/?payment=cancelled',
+           'success_url' => 'aprendermaskids://pago-exitoso?session_id={CHECKOUT_SESSION_ID}',
+            'cancel_url' => 'aprendermaskids://pago-cancelado',
         ]);
 
         return response()->json(['checkout_url' => $session->url]);

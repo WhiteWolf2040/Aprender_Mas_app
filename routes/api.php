@@ -38,6 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/profile', [ProgressController::class, 'profile']);
         Route::post('/profile/purchase', [ProgressController::class, 'purchase']);
         Route::post('/progress/activity', [ProgressController::class, 'activity']);
+        Route::get('/progress/missions', [ProgressController::class, 'completedMissions']);
         Route::post('/progress/missions/{mission}/complete', [ProgressController::class, 'mission']);
         Route::post('/profile/customize', [ProgressController::class, 'customize']);
         Route::get('/progress', [RankingController::class, 'progress']);

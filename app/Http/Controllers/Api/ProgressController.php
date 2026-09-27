@@ -15,6 +15,12 @@ use Illuminate\Validation\ValidationException;
 
 class ProgressController extends Controller
 {
+    private const MISSION_REWARDS = [
+        'match-animals' => 30,
+        'tap-apples' => 25,
+        'word-sol' => 40,
+    ];
+
     public function profile(Request $request): JsonResponse
     {
         return response()->json(['user' => $this->userPayload($request->user())]);
@@ -87,30 +93,41 @@ class ProgressController extends Controller
         ]);
     }
 
+    public function completedMissions(Request $request): JsonResponse
+    {
+        $missions = MissionCompletion::where('child_profile_id', $request->user()->id)
+            ->pluck('mission_key');
+
+        return response()->json(['missions' => $missions]);
+    }
+
     public function mission(Request $request, string $mission): JsonResponse
     {
-        $data = $request->validate(['stars' => ['required', 'integer', 'min:0', 'max:100']]);
+        abort_unless(isset(self::MISSION_REWARDS[$mission]), 404, 'Esta misión no existe.');
         $user = $request->user();
+        $stars = self::MISSION_REWARDS[$mission];
 
-        $completion = DB::transaction(function () use ($user, $mission, $data) {
+        $completion = DB::transaction(function () use ($user, $mission, $stars) {
+            $lockedChild = ChildProfile::query()->lockForUpdate()->findOrFail($user->id);
             $existing = MissionCompletion::where('child_profile_id', $user->id)
                 ->where('mission_key', $mission)
                 ->first();
             if ($existing) {
-                return false;
+                return 0;
             }
 
             MissionCompletion::create([
                 'child_profile_id' => $user->id,
                 'mission_key' => $mission,
-                'stars' => $data['stars'],
+                'stars' => $stars,
             ]);
-            $user->increment('total_stars', $data['stars']);
-            return true;
+            $lockedChild->increment('total_stars', $stars);
+            return $stars;
         });
 
         return response()->json([
-            'completed' => $completion,
+            'completed' => $completion > 0,
+            'stars_awarded' => $completion,
             'user' => $this->userPayload($user->fresh()),
         ]);
     }

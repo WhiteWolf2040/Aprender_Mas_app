@@ -391,4 +391,35 @@ class UserSubscriptionAndEnergyTest extends TestCase
             ->assertUnprocessable();
         $this->assertDatabaseCount('activities', 5);
     }
+
+    public function test_child_mission_rewards_are_granted_once_and_amount_is_server_controlled(): void
+    {
+        $parent = $this->parentAccount();
+        $child = $this->childProfile($parent, 'Luna', ['total_stars' => 12]);
+        $request = fn () => $this->actingAs($parent)
+            ->withHeader('X-Child-Profile-ID', (string) $child->id)
+            ->postJson('/api/progress/missions/match-animals/complete', ['stars' => 100]);
+
+        $request()->assertOk()
+            ->assertJsonPath('completed', true)
+            ->assertJsonPath('stars_awarded', 30)
+            ->assertJsonPath('user.total_stars', 42);
+        $request()->assertOk()
+            ->assertJsonPath('completed', false)
+            ->assertJsonPath('stars_awarded', 0)
+            ->assertJsonPath('user.total_stars', 42);
+
+        $this->actingAs($parent)->withHeader('X-Child-Profile-ID', (string) $child->id)
+            ->getJson('/api/progress/missions')
+            ->assertOk()
+            ->assertJsonPath('missions.0', 'match-animals');
+        $this->assertDatabaseHas('mission_completions', [
+            'child_profile_id' => $child->id,
+            'mission_key' => 'match-animals',
+            'stars' => 30,
+        ]);
+        $this->actingAs($parent)->withHeader('X-Child-Profile-ID', (string) $child->id)
+            ->postJson('/api/progress/missions/not-a-real-mission/complete')
+            ->assertNotFound();
+    }
 }
