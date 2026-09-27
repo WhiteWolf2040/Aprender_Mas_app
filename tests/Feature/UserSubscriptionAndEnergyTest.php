@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ChildProfile;
+use App\Models\Activity;
 use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -114,6 +115,35 @@ class UserSubscriptionAndEnergyTest extends TestCase
 
         $this->assertSame(2, $child->fresh()->energy);
         $this->assertDatabaseHas('progresses', ['child_profile_id' => $child->id]);
+    }
+
+    public function test_every_five_wrong_answers_reduce_activity_stars_by_one(): void
+    {
+        $parent = $this->parentAccount();
+        $child = $this->childProfile($parent);
+
+        $this->actingAs($parent)->withHeader('X-Child-Profile-ID', (string) $child->id)
+            ->postJson('/api/progress/activity', [
+                'subject' => 'math',
+                'score' => 1,
+                'total' => 1,
+                'earned_stars' => 10,
+                'mistakes' => 10,
+            ])->assertOk()
+            ->assertJsonPath('stars_awarded', 8)
+            ->assertJsonPath('mistakes', 10)
+            ->assertJsonPath('user.total_stars', 8);
+
+            $this->actingAs($parent)->withHeader('X-Child-Profile-ID', (string) $child->id)
+                ->postJson('/api/progress/activity', [
+                    'subject' => 'math',
+                    'score' => 1,
+                    'total' => 1,
+                    'earned_stars' => 2,
+                    'mistakes' => 4,
+                ])->assertOk()
+                ->assertJsonPath('stars_awarded', 2)
+                ->assertJsonPath('user.total_stars', 10);
     }
 
     public function test_each_activity_with_a_correct_answer_adds_two_levels_and_robot_unlocks_at_level_eight(): void
@@ -236,6 +266,24 @@ class UserSubscriptionAndEnergyTest extends TestCase
         $parent = $this->parentAccount();
         $child = $this->childProfile($parent, 'Sofia');
         $subject = Subject::where('name', 'Ciencias')->firstOrFail();
+        $otherParent = $this->parentAccount('Other Parent', 'other-activities@example.com');
+        $otherChild = $this->childProfile($otherParent, 'Other Child');
+        Activity::create([
+            'subject_id' => $subject->id,
+            'title' => 'Actividad global',
+            'type' => 'order',
+            'prompt' => 'No debe mostrarse en el perfil familiar.',
+            'content' => ['numbers' => ['1', '2']],
+        ]);
+        Activity::create([
+            'subject_id' => $subject->id,
+            'created_by' => $otherParent->id,
+            'child_id' => $otherChild->id,
+            'title' => 'Actividad de otra familia',
+            'type' => 'order',
+            'prompt' => 'No debe mostrarse a otra familia.',
+            'content' => ['numbers' => ['1', '2']],
+        ]);
 
         $this->actingAs($parent)->postJson('/api/activities', [
             'subject_id' => $subject->id,
@@ -253,6 +301,14 @@ class UserSubscriptionAndEnergyTest extends TestCase
 
         $this->withHeader('X-Child-Profile-ID', (string) $child->id)->getJson('/api/activities')
             ->assertOk()->assertJsonCount(1)->assertJsonPath('0.title', 'Sopa de animales');
+        $this->actingAs($parent)->withHeader('X-Child-Profile-ID', (string) $child->id)
+            ->postJson('/api/progress/activity', [
+                'subject' => 'Ciencias',
+                'score' => 1,
+                'total' => 1,
+                'earned_stars' => 5,
+                'activity_id' => Activity::where('title', 'Actividad de otra familia')->value('id'),
+            ])->assertForbidden();
         $this->assertTrue($child->fresh()->hasUnlimitedEnergy());
     }
 

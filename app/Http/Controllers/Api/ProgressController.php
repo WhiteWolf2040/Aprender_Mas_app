@@ -33,9 +33,11 @@ class ProgressController extends Controller
             'score' => ['required', 'integer', 'min:0'],
             'total' => ['required', 'integer', 'min:1', 'max:100'],
             'earned_stars' => ['required', 'integer', 'min:0', 'max:100'],
+            'mistakes' => ['sometimes', 'integer', 'min:0', 'max:1000'],
             'activity_id' => ['nullable', 'integer', 'exists:activities,id'],
             'elapsed_seconds' => ['nullable', 'integer', 'min:0'],
         ]);
+        $data['mistakes'] = $data['mistakes'] ?? 0;
         if ($data['score'] > $data['total']) {
             throw ValidationException::withMessages([
                 'score' => ['El puntaje no puede superar el total de preguntas.'],
@@ -43,11 +45,12 @@ class ProgressController extends Controller
         }
 
         $user = $request->user();
+        $starsAwarded = max(0, $data['earned_stars'] - intdiv($data['mistakes'], 5));
         if (!empty($data['activity_id'])) {
-            $activity = Activity::with('creator')->findOrFail($data['activity_id']);
-            $isAvailable = $activity->child_id === $user->id
-                || $activity->created_by === null
-                || $activity->creator?->role === 'maestro';
+            $activity = Activity::findOrFail($data['activity_id']);
+            $isAvailable = $user instanceof ChildProfile
+                && $activity->child_id === $user->id
+                && $activity->created_by === $user->parent_id;
             abort_unless($isAvailable, 403, 'Esta actividad no está asignada a tu perfil.');
         }
         if (!$user->consumeEnergy()) {
@@ -58,7 +61,7 @@ class ProgressController extends Controller
             ], 422);
         }
 
-        DB::transaction(function () use ($user, $data) {
+        DB::transaction(function () use ($user, $data, $starsAwarded) {
             Progress::create([
                 'child_profile_id' => $user->id,
                 'activity_id' => $data['activity_id'] ?? null,
@@ -68,7 +71,7 @@ class ProgressController extends Controller
                 'elapsed_seconds' => $data['elapsed_seconds'] ?? null,
                 'completed_at' => now(),
             ]);
-            $user->increment('total_stars', $data['earned_stars']);
+            $user->increment('total_stars', $starsAwarded);
             $user->forceFill([
                 'last_activity_date' => now()->toDateString(),
                 'streak' => $user->last_activity_date?->isToday()
@@ -89,6 +92,8 @@ class ProgressController extends Controller
 
         return response()->json([
             'user' => $this->userPayload($freshUser),
+            'stars_awarded' => $starsAwarded,
+            'mistakes' => $data['mistakes'],
             'unlimited_energy' => $freshUser->hasUnlimitedEnergy(),
         ]);
     }

@@ -29,18 +29,16 @@ class ContentController extends Controller
     public function activities(Request $request): JsonResponse
     {
         $user = $request->user();
-        $query = Activity::with(['subject', 'child:id,name,avatar'])->latest();
+        $query = Activity::query()
+            ->with('subject:id,name,icon')
+            ->select('id', 'subject_id', 'created_by', 'child_id', 'title', 'type', 'prompt', 'content', 'created_at')
+            ->latest();
         if ($user->role === 'padre') {
             abort_unless($user->hasActivePlan(), 403, 'Se requiere un plan activo para administrar actividades.');
-            $query->where('created_by', $user->id);
+            $query->with('child:id,name,avatar')->where('created_by', $user->id);
         } elseif ($user instanceof ChildProfile) {
-            $query->where(function ($activities) use ($user) {
-                $activities->where(function ($globalActivities) {
-                    $globalActivities->whereNull('created_by')->orWhereHas('creator', function ($creator) {
-                        $creator->where('role', 'maestro');
-                    });
-                })->orWhere('child_id', $user->id);
-            });
+            $query->where('created_by', $user->parent_id)
+                ->where('child_id', $user->id);
         } else {
             abort_unless($user->role === 'maestro', 403);
         }
