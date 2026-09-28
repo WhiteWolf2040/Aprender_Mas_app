@@ -242,11 +242,32 @@ class UserSubscriptionAndEnergyTest extends TestCase
     public function test_rankings_are_available_without_authentication(): void
     {
         $child = $this->childProfile($this->parentAccount(), 'Luna', ['total_stars' => 45]);
+        $otherChild = $this->childProfile(
+            $this->parentAccount('Another Parent', 'global-ranking@example.com'),
+            'Mateo',
+            ['total_stars' => 25],
+        );
         $this->getJson('/api/rankings')
             ->assertOk()
+            ->assertJsonCount(2)
             ->assertJsonPath('0.id', $child->id)
             ->assertJsonPath('0.name', 'Luna')
-            ->assertJsonPath('0.total_stars', 45);
+            ->assertJsonPath('0.total_stars', 45)
+            ->assertJsonPath('1.id', $otherChild->id)
+            ->assertJsonPath('1.name', 'Mateo');
+    }
+
+    public function test_global_ranking_includes_profiles_past_the_first_hundred(): void
+    {
+        $parent = $this->parentAccount();
+        for ($index = 1; $index <= 101; $index++) {
+            $this->childProfile($parent, "Child {$index}", ['total_stars' => 101 - $index]);
+        }
+
+        $this->getJson('/api/rankings')
+            ->assertOk()
+            ->assertJsonCount(101)
+            ->assertJsonPath('100.name', 'Child 101');
     }
 
     public function test_family_ranking_only_lists_children_from_the_authenticated_parent(): void

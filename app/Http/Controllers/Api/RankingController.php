@@ -29,8 +29,6 @@ class RankingController extends Controller
             $parentId = $account instanceof ChildProfile ? $account->parent_id : $account->id;
             abort_unless($parentId, 403, 'El ranking familiar requiere una cuenta de padre o tutor.');
             $query->where('parent_id', $parentId);
-        } else {
-            $query->limit(100);
         }
 
         return response()->json($query->get()->values());
