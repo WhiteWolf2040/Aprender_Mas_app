@@ -7,6 +7,7 @@ use App\Models\Activity;
 use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class UserSubscriptionAndEnergyTest extends TestCase
@@ -127,23 +128,23 @@ class UserSubscriptionAndEnergyTest extends TestCase
                 'subject' => 'math',
                 'score' => 1,
                 'total' => 1,
-                'earned_stars' => 10,
                 'mistakes' => 10,
             ])->assertOk()
-            ->assertJsonPath('stars_awarded', 8)
+            ->assertJsonPath('base_stars', 16)
+            ->assertJsonPath('stars_deducted', 2)
+            ->assertJsonPath('stars_awarded', 14)
             ->assertJsonPath('mistakes', 10)
-            ->assertJsonPath('user.total_stars', 8);
+            ->assertJsonPath('user.total_stars', 14);
 
             $this->actingAs($parent)->withHeader('X-Child-Profile-ID', (string) $child->id)
                 ->postJson('/api/progress/activity', [
                     'subject' => 'math',
                     'score' => 1,
-                    'total' => 1,
-                    'earned_stars' => 2,
+                    'total' => 2,
                     'mistakes' => 4,
                 ])->assertOk()
-                ->assertJsonPath('stars_awarded', 2)
-                ->assertJsonPath('user.total_stars', 10);
+                ->assertJsonPath('stars_awarded', 6)
+                ->assertJsonPath('user.total_stars', 20);
     }
 
     public function test_each_activity_with_a_correct_answer_adds_two_levels_and_robot_unlocks_at_level_eight(): void
@@ -246,6 +247,26 @@ class UserSubscriptionAndEnergyTest extends TestCase
             ->assertJsonPath('0.id', $child->id)
             ->assertJsonPath('0.name', 'Luna')
             ->assertJsonPath('0.total_stars', 45);
+    }
+
+    public function test_family_ranking_only_lists_children_from_the_authenticated_parent(): void
+    {
+        $parent = $this->parentAccount();
+        $otherParent = $this->parentAccount('Other Parent', 'other-ranking@example.com');
+        $this->childProfile($parent, 'Santi', ['total_stars' => 45]);
+        $this->childProfile($parent, 'Sofia', ['total_stars' => 20]);
+        $this->childProfile($otherParent, 'Luna', ['total_stars' => 90]);
+
+        $this->getJson('/api/rankings?scope=family')
+            ->assertUnauthorized();
+
+        Sanctum::actingAs($parent);
+        $this->getJson('/api/rankings?scope=family')
+            ->assertOk()
+            ->assertJsonCount(2)
+            ->assertJsonPath('0.name', 'Santi')
+            ->assertJsonPath('1.name', 'Sofia')
+            ->assertJsonMissing(['name' => 'Luna']);
     }
 
     public function test_child_can_select_a_free_avatar_with_parent_session_context(): void

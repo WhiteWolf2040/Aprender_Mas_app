@@ -32,7 +32,6 @@ class ProgressController extends Controller
             'subject' => ['required', 'string', 'max:50'],
             'score' => ['required', 'integer', 'min:0'],
             'total' => ['required', 'integer', 'min:1', 'max:100'],
-            'earned_stars' => ['required', 'integer', 'min:0', 'max:100'],
             'mistakes' => ['sometimes', 'integer', 'min:0', 'max:1000'],
             'activity_id' => ['nullable', 'integer', 'exists:activities,id'],
             'elapsed_seconds' => ['nullable', 'integer', 'min:0'],
@@ -45,7 +44,9 @@ class ProgressController extends Controller
         }
 
         $user = $request->user();
-        $starsAwarded = max(0, $data['earned_stars'] - intdiv($data['mistakes'], 5));
+        $baseStars = $data['score'] * 6 + ($data['score'] === $data['total'] ? 10 : 0);
+        $starsDeducted = min($baseStars, intdiv($data['mistakes'], 5));
+        $starsAwarded = $baseStars - $starsDeducted;
         if (!empty($data['activity_id'])) {
             $activity = Activity::findOrFail($data['activity_id']);
             $isAvailable = $user instanceof ChildProfile
@@ -92,6 +93,8 @@ class ProgressController extends Controller
 
         return response()->json([
             'user' => $this->userPayload($freshUser),
+            'base_stars' => $baseStars,
+            'stars_deducted' => $starsDeducted,
             'stars_awarded' => $starsAwarded,
             'mistakes' => $data['mistakes'],
             'unlimited_energy' => $freshUser->hasUnlimitedEnergy(),
