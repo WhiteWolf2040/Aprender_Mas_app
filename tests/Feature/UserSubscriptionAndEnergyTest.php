@@ -355,6 +355,51 @@ class UserSubscriptionAndEnergyTest extends TestCase
         $this->assertTrue($child->fresh()->hasUnlimitedEnergy());
     }
 
+    public function test_parent_can_choose_tap_answer_and_activity_star_limit_up_to_sixteen(): void
+    {
+        $parent = $this->parentAccount();
+        $child = $this->childProfile($parent, 'Sofia');
+        $subject = Subject::where('name', 'Ciencias')->firstOrFail();
+
+        $response = $this->actingAs($parent)->postJson('/api/activities', [
+            'subject_id' => $subject->id,
+            'child_id' => $child->id,
+            'title' => 'Elige la respuesta',
+            'type' => 'tap',
+            'prompt' => '¿Cuál es el planeta rojo?',
+            'content' => [
+                'options' => ['Venus', 'Marte', 'Tierra'],
+                'answer' => 'Marte',
+                'maximum_stars' => 16,
+            ],
+        ])->assertCreated()
+            ->assertJsonPath('content.answer', 'Marte')
+            ->assertJsonPath('content.maximum_stars', 16);
+
+        $activityId = $response->json('id');
+        $this->actingAs($parent)->withHeader('X-Child-Profile-ID', (string) $child->id)
+            ->postJson('/api/progress/activity', [
+                'subject' => 'Ciencias',
+                'score' => 1,
+                'total' => 1,
+                'activity_id' => $activityId,
+            ])->assertOk()
+            ->assertJsonPath('base_stars', 16)
+            ->assertJsonPath('stars_awarded', 16);
+
+        $this->actingAs($parent)->postJson('/api/activities', [
+            'subject_id' => $subject->id,
+            'child_id' => $child->id,
+            'title' => 'Límite de estrellas inválido',
+            'type' => 'tap',
+            'content' => [
+                'options' => ['Sí', 'No'],
+                'answer' => 'Sí',
+                'maximum_stars' => 17,
+            ],
+        ])->assertUnprocessable();
+    }
+
     public function test_parent_dashboard_lists_its_profiles_and_plan_limit(): void
     {
         $parent = $this->parentAccount();

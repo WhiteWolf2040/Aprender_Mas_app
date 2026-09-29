@@ -186,7 +186,10 @@ class ContentController extends Controller
                 'content.words.*' => ['required', 'string', 'max:12'],
             ],
         };
-        return [...$data, ...$request->validate($contentRules)];
+        return [...$data, ...$request->validate([
+            'content.maximum_stars' => ['sometimes', 'integer', 'min:1', 'max:16'],
+            ...$contentRules,
+        ])];
     }
 
     private function authorizeSubjectManagement($user): void

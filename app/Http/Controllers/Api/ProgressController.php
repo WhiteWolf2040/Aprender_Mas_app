@@ -50,9 +50,7 @@ class ProgressController extends Controller
         }
 
         $user = $request->user();
-        $baseStars = $data['score'] * 6 + ($data['score'] === $data['total'] ? 10 : 0);
-        $starsDeducted = min($baseStars, intdiv($data['mistakes'], 5));
-        $starsAwarded = $baseStars - $starsDeducted;
+        $activity = null;
         if (!empty($data['activity_id'])) {
             $activity = Activity::findOrFail($data['activity_id']);
             $isAvailable = $user instanceof ChildProfile
@@ -60,6 +58,12 @@ class ProgressController extends Controller
                 && $activity->created_by === $user->parent_id;
             abort_unless($isAvailable, 403, 'Esta actividad no está asignada a tu perfil.');
         }
+        $maximumStars = $activity?->content['maximum_stars'] ?? null;
+        $baseStars = $maximumStars !== null
+            ? (int) round(($data['score'] / $data['total']) * $maximumStars)
+            : $data['score'] * 6 + ($data['score'] === $data['total'] ? 10 : 0);
+        $starsDeducted = min($baseStars, intdiv($data['mistakes'], 5));
+        $starsAwarded = $baseStars - $starsDeducted;
         if (!$user->consumeEnergy()) {
             return response()->json([
                 'message' => 'Te quedaste sin energía. Revisa los planes para continuar jugando.',
