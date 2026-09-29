@@ -19,6 +19,12 @@ class ProgressController extends Controller
         'match-animals' => 30,
         'tap-apples' => 25,
         'word-sol' => 40,
+        'match-habitats' => 30,
+        'tap-stars' => 25,
+        'word-luna' => 40,
+        'match-colors' => 30,
+        'tap-butterflies' => 25,
+        'word-flor' => 40,
     ];
 
     public function profile(Request $request): JsonResponse
@@ -103,10 +109,16 @@ class ProgressController extends Controller
 
     public function completedMissions(Request $request): JsonResponse
     {
+        $date = today()->toDateString();
+        $anchor = \Illuminate\Support\Carbon::parse('2026-01-01', config('app.timezone'))->startOfDay();
+        $cycle = ((int) $anchor->diffInDays(today())) % 3;
         $missions = MissionCompletion::where('child_profile_id', $request->user()->id)
-            ->pluck('mission_key');
+            ->where('mission_key', 'like', $date . ':%')
+            ->pluck('mission_key')
+            ->map(fn (string $key) => substr($key, strlen($date) + 1)
+            )->values();
 
-        return response()->json(['missions' => $missions]);
+        return response()->json(['missions' => $missions, 'cycle' => $cycle, 'date' => $date]);
     }
 
     public function mission(Request $request, string $mission): JsonResponse
@@ -114,11 +126,12 @@ class ProgressController extends Controller
         abort_unless(isset(self::MISSION_REWARDS[$mission]), 404, 'Esta misión no existe.');
         $user = $request->user();
         $stars = self::MISSION_REWARDS[$mission];
+        $dailyMissionKey = today()->toDateString() . ':' . $mission;
 
-        $completion = DB::transaction(function () use ($user, $mission, $stars) {
+        $completion = DB::transaction(function () use ($user, $dailyMissionKey, $stars) {
             $lockedChild = ChildProfile::query()->lockForUpdate()->findOrFail($user->id);
             $existing = MissionCompletion::where('child_profile_id', $user->id)
-                ->where('mission_key', $mission)
+                ->where('mission_key', $dailyMissionKey)
                 ->first();
             if ($existing) {
                 return 0;
@@ -126,7 +139,7 @@ class ProgressController extends Controller
 
             MissionCompletion::create([
                 'child_profile_id' => $user->id,
-                'mission_key' => $mission,
+                'mission_key' => $dailyMissionKey,
                 'stars' => $stars,
             ]);
             $lockedChild->increment('total_stars', $stars);

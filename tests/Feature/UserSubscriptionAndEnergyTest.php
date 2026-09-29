@@ -7,6 +7,7 @@ use App\Models\Activity;
 use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -510,12 +511,26 @@ class UserSubscriptionAndEnergyTest extends TestCase
         $this->actingAs($parent)->withHeader('X-Child-Profile-ID', (string) $child->id)
             ->getJson('/api/progress/missions')
             ->assertOk()
-            ->assertJsonPath('missions.0', 'match-animals');
+            ->assertJsonPath('missions.0', 'match-animals')
+            ->assertJsonPath('date', today()->toDateString());
         $this->assertDatabaseHas('mission_completions', [
             'child_profile_id' => $child->id,
-            'mission_key' => 'match-animals',
+            'mission_key' => today()->toDateString() . ':match-animals',
             'stars' => 30,
         ]);
+
+        Carbon::setTestNow(now()->addDay());
+        $request()->assertOk()
+            ->assertJsonPath('completed', true)
+            ->assertJsonPath('stars_awarded', 30)
+            ->assertJsonPath('user.total_stars', 72);
+        $this->actingAs($parent)->withHeader('X-Child-Profile-ID', (string) $child->id)
+            ->getJson('/api/progress/missions')
+            ->assertOk()
+            ->assertJsonPath('missions.0', 'match-animals')
+            ->assertJsonPath('date', today()->toDateString());
+        Carbon::setTestNow();
+
         $this->actingAs($parent)->withHeader('X-Child-Profile-ID', (string) $child->id)
             ->postJson('/api/progress/missions/not-a-real-mission/complete')
             ->assertNotFound();
